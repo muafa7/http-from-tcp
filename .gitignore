@@ -1,0 +1,28 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.out
+
+# Test binary
+*.test
+
+# Go coverage
+*.coverprofile
+coverage.out
+
+# Vendor
+vendor/
+
+# Dependency directories
+bin/
+
+# IDE
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
