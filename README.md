@@ -2,18 +2,23 @@
 
 A small Go project for learning how HTTP works on top of raw network primitives.
 
-This repository explores the building blocks behind HTTP by working directly with TCP sockets, reading streaming input manually, and parsing the HTTP request line without relying on higher-level web frameworks.
+This project explores how HTTP is built by working directly with TCP sockets, handling raw byte streams, and parsing HTTP requests manually without relying on high-level frameworks.
+
+---
 
 ## What this project does
 
-- listens for incoming TCP connections
-- reads incoming data as a stream
-- splits incoming bytes into newline-delimited messages
-- parses and validates an HTTP/1.1 request line
-- includes tests for valid and invalid request parsing cases
+- Listens for incoming TCP connections
+- Reads incoming data as a stream
+- Splits messages by newline boundaries
+- Parses and validates HTTP/1.1 request lines
+- Includes tests for valid and invalid request formats
+
+---
 
 ## Project structure
 
+```text
 .
 ├── cmd/
 │   ├── tcplistener/
@@ -28,36 +33,44 @@ This repository explores the building blocks behind HTTP by working directly wit
 ├── messages.txt
 ├── go.mod
 └── go.sum
+```
+
+---
 
 ## Why this project exists
 
-Most applications interact with HTTP through frameworks and standard library helpers. This project takes a lower-level approach so you can better understand:
+Most developers interact with HTTP through frameworks or standard libraries. This project takes a lower-level approach to help you understand:
 
-- how bytes arrive over a socket
-- how message boundaries are handled
+- how data is transmitted over TCP
+- how streaming input is processed
 - how HTTP request lines are structured
-- how protocol validation works before building a full server
+- how protocol validation works internally
 
-It is a good foundation for eventually building a minimal HTTP server from scratch.
+This serves as a foundation for building an HTTP server from scratch.
 
-## Current components
+---
 
-### TCP listener
+## Components
 
-Accepts connections and reads incoming data line by line to simulate how raw HTTP requests arrive over a socket.
+### TCP Listener
+Accepts connections and reads incoming data line-by-line to simulate how raw HTTP requests arrive over a socket.
 
-### UDP sender
+### UDP Sender
+A simple CLI tool to send messages over UDP for testing and experimentation.
 
-Simple CLI tool to send messages over UDP for testing and experimentation.
-
-### HTTP request parser
-
+### HTTP Request Parser
 Parses and validates HTTP/1.1 request lines, including method, path, and version.
+
+---
 
 ## Example request
 
+```http
 GET / HTTP/1.1
 Host: localhost:42069
+```
+
+---
 
 ## Getting started
 
@@ -65,44 +78,60 @@ Host: localhost:42069
 
 - Go 1.25+
 
-### Clone the repo
+### Clone the repository
 
+```bash
 git clone https://github.com/muafa7/http-from-tcp.git
 cd http-from-tcp
+```
 
 ### Run tests
 
+```bash
 go test ./...
+```
 
-### Run the TCP listener
+### Run TCP listener
 
+```bash
 go run ./cmd/tcplistener
+```
 
-### Run the UDP sender
+### Run UDP sender
 
+```bash
 go run ./cmd/udpsender
+```
+
+---
 
 ## Learning focus
 
-- Go networking basics
+- Go networking fundamentals
 - TCP socket handling
-- streamed input processing
+- Stream processing
 - HTTP request parsing
-- protocol validation
+- Protocol validation
+
+---
 
 ## Limitations
 
-- no full HTTP server yet
-- no header/body parsing beyond request line
-- no routing or response handling
+- Not a full HTTP server yet
+- No header or body parsing beyond request line
+- No routing or response handling
+
+---
 
 ## Future improvements
 
-- header parsing
-- request body support
-- HTTP response writing
-- routing system
-- full HTTP server implementation
+- Header parsing
+- Request body support
+- HTTP response generation
+- Routing system
+- Full HTTP server implementation
+
+---
 
 ## Tech stack
 
