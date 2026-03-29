@@ -3,12 +3,44 @@ package request
 import (
 	"errors"
 	"io"
-	"log"
 	"strings"
+)
+
+const bufferSize = 8
+
+type parseState int
+
+const (
+	stateInitialized parseState = iota
+	stateDone
 )
 
 type Request struct {
 	RequestLine RequestLine
+	state       parseState
+}
+
+func (r *Request) parse(data []byte) (int, error) {
+	if r.state == stateDone {
+		return 0, nil
+	}
+
+	if r.state == stateInitialized {
+		requestLine, numOfBytes, err := parseRequestLine(data)
+		if err != nil {
+			return 0, err
+		}
+
+		if numOfBytes == 0 {
+			return 0, nil
+		}
+
+		r.RequestLine = requestLine
+		r.state = stateDone
+		return numOfBytes, nil
+	}
+
+	return 0, errors.New("error: unknown state")
 }
 
 type RequestLine struct {
@@ -17,10 +49,18 @@ type RequestLine struct {
 	Method        string
 }
 
-func parseRequestLine(requestLine string) (RequestLine, error) {
-	parts := strings.Split(requestLine, " ")
+func parseRequestLine(data []byte) (RequestLine, int, error) {
+	dataString := string(data)
+	idx := strings.Index(dataString, "\r\n")
+	if idx == -1 {
+		return RequestLine{}, 0, nil
+	}
+
+	line := dataString[:idx]
+
+	parts := strings.Split(line, " ")
 	if len(parts) != 3 {
-		return RequestLine{}, errors.New("Not valid request line")
+		return RequestLine{}, 0, errors.New("Not valid request line")
 	}
 
 	method := parts[0]
@@ -28,54 +68,72 @@ func parseRequestLine(requestLine string) (RequestLine, error) {
 	versionPart := parts[2]
 
 	if method == "" {
-		return RequestLine{}, errors.New("invalid method")
+		return RequestLine{}, 0, errors.New("invalid method")
 	}
 
 	for _, ch := range method {
 		if ch < 'A' || ch > 'Z' {
-			return RequestLine{}, errors.New("invalid method")
+			return RequestLine{}, 0, errors.New("invalid method")
 		}
 	}
 
 	versionParts := strings.Split(versionPart, "/")
 	if len(versionParts) != 2 {
-		return RequestLine{}, errors.New("invalid HTTP version")
+		return RequestLine{}, 0, errors.New("invalid HTTP version")
 	}
 
 	if versionParts[0] != "HTTP" || versionParts[1] != "1.1" {
-		return RequestLine{}, errors.New("unsupported HTTP version")
+		return RequestLine{}, 0, errors.New("unsupported HTTP version")
 	}
 
 	return RequestLine{
 		Method:        method,
 		RequestTarget: requestTarget,
 		HttpVersion:   versionParts[1],
-	}, nil
+	}, len(line) + 2, nil
 }
 
 func RequestFromReader(reader io.Reader) (*Request, error) {
-	request, err := io.ReadAll(reader)
-	if err != nil {
-		log.Printf("request error %v\n", err)
-		return &Request{}, err
+	req := &Request{
+		state: stateInitialized,
 	}
 
-	toString := string(request)
+	buf := make([]byte, bufferSize)
+	readToIndex := 0
 
-	if checkstring := strings.Contains(toString, "\r\n"); checkstring == false {
-		log.Println("No request line provided")
-		return &Request{}, errors.New("No request line provided")
+	for req.state != stateDone {
+		if readToIndex == len(buf) {
+			newBuf := make([]byte, len(buf)*2)
+			copy(newBuf, buf[:readToIndex])
+			buf = newBuf
+		}
+
+		numBytesRead, err := reader.Read(buf[readToIndex:])
+		if numBytesRead > 0 {
+			readToIndex += numBytesRead
+
+			numBytesParsed, parseErr := req.parse(buf[:readToIndex])
+			if parseErr != nil {
+				return nil, parseErr
+			}
+
+			if numBytesParsed > 0 {
+				copy(buf, buf[numBytesParsed:readToIndex])
+				readToIndex -= numBytesParsed
+			}
+		}
+
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return nil, err
+		}
 	}
-	split := strings.Split(toString, "\r\n")
-	requestLine := split[0]
 
-	parsedRequestLine, err := parseRequestLine(requestLine)
-	if err != nil {
-		log.Printf("request error %v\n", err)
-		return nil, err
+	if req.state != stateDone {
+		return nil, errors.New("incomplete request line")
 	}
 
-	return &Request{
-		RequestLine: parsedRequestLine,
-	}, nil
+	return req, nil
 }
