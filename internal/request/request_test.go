@@ -136,3 +136,113 @@ func TestIgnoresEverythingAfterRequestLine(t *testing.T) {
 	assert.Equal(t, "/tea", r.RequestLine.RequestTarget)
 	assert.Equal(t, "1.1", r.RequestLine.HttpVersion)
 }
+
+func TestStandardHeaders(t *testing.T) {
+	reader := &chunkReader{
+		data:            "GET / HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n",
+		numBytesPerRead: 3,
+	}
+	r, err := RequestFromReader(reader)
+	require.NoError(t, err)
+	require.NotNil(t, r)
+
+	assert.Equal(t, "localhost:42069", r.Headers["host"])
+	assert.Equal(t, "curl/7.81.0", r.Headers["user-agent"])
+	assert.Equal(t, "*/*", r.Headers["accept"])
+}
+
+func TestEmptyHeaders(t *testing.T) {
+	reader := &chunkReader{
+		data:            "GET / HTTP/1.1\r\n\r\n",
+		numBytesPerRead: 3,
+	}
+	r, err := RequestFromReader(reader)
+	require.NoError(t, err)
+	require.NotNil(t, r)
+
+	assert.Empty(t, r.Headers)
+}
+
+func TestMalformedHeader(t *testing.T) {
+	reader := &chunkReader{
+		data:            "GET / HTTP/1.1\r\nHost localhost:42069\r\n\r\n",
+		numBytesPerRead: 3,
+	}
+	r, err := RequestFromReader(reader)
+	require.Error(t, err)
+	assert.Nil(t, r)
+}
+
+func TestDuplicateHeaders(t *testing.T) {
+	reader := &chunkReader{
+		data:            "GET / HTTP/1.1\r\nHost: first.example\r\nHost: second.example\r\n\r\n",
+		numBytesPerRead: 3,
+	}
+	r, err := RequestFromReader(reader)
+	require.NoError(t, err)
+	require.NotNil(t, r)
+
+	assert.Equal(t, "first.example,second.example", r.Headers["host"])
+}
+
+func TestCaseInsensitiveHeaders(t *testing.T) {
+	reader := &chunkReader{
+		data:            "GET / HTTP/1.1\r\nHoSt: localhost:42069\r\nUsEr-AgEnT: curl/7.81.0\r\nAcCePt: application/json\r\n\r\n",
+		numBytesPerRead: 3,
+	}
+	r, err := RequestFromReader(reader)
+	require.NoError(t, err)
+	require.NotNil(t, r)
+
+	assert.Equal(t, "localhost:42069", r.Headers["host"])
+	assert.Equal(t, "curl/7.81.0", r.Headers["user-agent"])
+	assert.Equal(t, "application/json", r.Headers["accept"])
+}
+
+func TestMissingEndOfHeaders(t *testing.T) {
+	reader := &chunkReader{
+		data:            "GET / HTTP/1.1\r\nHost: localhost:42069\r\n",
+		numBytesPerRead: 3,
+	}
+	r, err := RequestFromReader(reader)
+	require.Error(t, err)
+	assert.Nil(t, r)
+}
+
+func TestHeaderWithEmptyValue(t *testing.T) {
+	reader := &chunkReader{
+		data:            "GET / HTTP/1.1\r\nX-Empty:\r\n\r\n",
+		numBytesPerRead: 3,
+	}
+	r, err := RequestFromReader(reader)
+	require.NoError(t, err)
+	require.NotNil(t, r)
+
+	assert.Equal(t, "", r.Headers["x-empty"])
+}
+
+func TestHeaderValueWithColon(t *testing.T) {
+	reader := &chunkReader{
+		data:            "GET / HTTP/1.1\r\nHost: localhost:42069\r\nX-Forwarded-For: 127.0.0.1:8080\r\n\r\n",
+		numBytesPerRead: 3,
+	}
+	r, err := RequestFromReader(reader)
+	require.NoError(t, err)
+	require.NotNil(t, r)
+
+	assert.Equal(t, "localhost:42069", r.Headers["host"])
+	assert.Equal(t, "127.0.0.1:8080", r.Headers["x-forwarded-for"])
+}
+
+func TestHeadersOneByteAtATime(t *testing.T) {
+	reader := &chunkReader{
+		data:            "GET / HTTP/1.1\r\nHost: localhost:42069\r\nAccept: */*\r\n\r\n",
+		numBytesPerRead: 1,
+	}
+	r, err := RequestFromReader(reader)
+	require.NoError(t, err)
+	require.NotNil(t, r)
+
+	assert.Equal(t, "localhost:42069", r.Headers["host"])
+	assert.Equal(t, "*/*", r.Headers["accept"])
+}

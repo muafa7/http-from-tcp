@@ -4,6 +4,8 @@ import (
 	"errors"
 	"io"
 	"strings"
+
+	"github.com/muafa7/http-from-tcp/internal/headers"
 )
 
 const bufferSize = 8
@@ -12,11 +14,13 @@ type parseState int
 
 const (
 	stateInitialized parseState = iota
+	stateParsingHeaders
 	stateDone
 )
 
 type Request struct {
 	RequestLine RequestLine
+	Headers     headers.Headers
 	state       parseState
 }
 
@@ -25,7 +29,27 @@ func (r *Request) parse(data []byte) (int, error) {
 		return 0, nil
 	}
 
-	if r.state == stateInitialized {
+	totalBytesParsed := 0
+
+	for r.state != stateDone {
+		n, err := r.parseSingle(data[totalBytesParsed:])
+		if err != nil {
+			return totalBytesParsed, err
+		}
+
+		if n == 0 {
+			return totalBytesParsed, nil
+		}
+
+		totalBytesParsed += n
+	}
+
+	return totalBytesParsed, nil
+}
+
+func (r *Request) parseSingle(data []byte) (int, error) {
+	switch r.state {
+	case stateInitialized:
 		requestLine, numOfBytes, err := parseRequestLine(data)
 		if err != nil {
 			return 0, err
@@ -36,11 +60,32 @@ func (r *Request) parse(data []byte) (int, error) {
 		}
 
 		r.RequestLine = requestLine
-		r.state = stateDone
+		r.Headers = headers.Headers{}
+		r.state = stateParsingHeaders
 		return numOfBytes, nil
-	}
 
-	return 0, errors.New("error: unknown state")
+	case stateParsingHeaders:
+		n, done, err := r.Headers.Parse(data)
+		if err != nil {
+			return 0, err
+		}
+
+		if n == 0 {
+			return 0, nil
+		}
+
+		if done {
+			r.state = stateDone
+		}
+
+		return n, nil
+
+	case stateDone:
+		return 0, nil
+
+	default:
+		return 0, errors.New("unknown state")
+	}
 }
 
 type RequestLine struct {

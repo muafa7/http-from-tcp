@@ -9,11 +9,6 @@ import (
 )
 
 func main() {
-	// file, err := os.Open("./messages.txt")
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-
 	listener, err := net.Listen("tcp", ":42069")
 	if err != nil {
 		log.Fatal(err)
@@ -38,6 +33,10 @@ func main() {
 		fmt.Printf("- Method: %s\n", result.RequestLine.Method)
 		fmt.Printf("- Target: %s\n", result.RequestLine.RequestTarget)
 		fmt.Printf("- Version: %s\n", result.RequestLine.HttpVersion)
+		fmt.Println("Headers:")
+		for key, value := range result.Headers {
+			fmt.Printf("- %s: %s\n", key, value)
+		}
 
 		fmt.Println("connection closed")
 
