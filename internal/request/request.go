@@ -3,6 +3,7 @@ package request
 import (
 	"errors"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/muafa7/http-from-tcp/internal/headers"
@@ -15,12 +16,14 @@ type parseState int
 const (
 	stateInitialized parseState = iota
 	stateParsingHeaders
+	stateParsingBody
 	stateDone
 )
 
 type Request struct {
 	RequestLine RequestLine
 	Headers     headers.Headers
+	Body        []byte
 	state       parseState
 }
 
@@ -75,10 +78,34 @@ func (r *Request) parseSingle(data []byte) (int, error) {
 		}
 
 		if done {
-			r.state = stateDone
+			r.state = stateParsingBody
 		}
 
 		return n, nil
+
+	case stateParsingBody:
+		contentLengthStr, found := r.Headers.Get("Content-Length")
+		if !found {
+			r.state = stateDone
+			return len(data), nil
+		}
+
+		contentLength, err := strconv.Atoi(contentLengthStr)
+		if err != nil {
+			return 0, err
+		}
+
+		r.Body = append(r.Body, data...)
+
+		if len(r.Body) > contentLength {
+			return 0, errors.New("data length greater than expected")
+		}
+
+		if len(r.Body) == contentLength {
+			r.state = stateDone
+		}
+
+		return len(data), nil
 
 	case stateDone:
 		return 0, nil
