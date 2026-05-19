@@ -9,10 +9,11 @@ This project explores how HTTP is built by working directly with TCP sockets, ha
 ## What this project does
 
 - Listens for incoming TCP connections
-- Reads incoming data as a stream
-- Splits messages by newline boundaries
-- Parses and validates HTTP/1.1 request lines
-- Includes tests for valid and invalid request formats
+- Reads incoming data as a stream (incremental reads, not one-shot buffers)
+- Parses and validates HTTP/1.1 request lines (method, target, version)
+- Parses request headers (case-insensitive keys, duplicate merging)
+- Parses request bodies when `Content-Length` is present
+- Includes tests for valid and invalid request formats (including split/chunked reads)
 
 ---
 
@@ -22,18 +23,22 @@ This project explores how HTTP is built by working directly with TCP sockets, ha
 .
 ├── cmd/
 │   ├── tcplistener/
-│   │   └── main.go
+│   │   └── main.go          # TCP demo: parse one request per connection, print fields
 │   └── udpsender/
-│       └── main.go
+│       └── main.go          # UDP stdin client (separate from HTTP path)
 ├── internal/
+│   ├── headers/
+│   │   ├── headers.go
+│   │   └── headers_test.go
 │   └── request/
-│       ├── request.go
+│       ├── request.go       # Request parser + state machine
 │       └── request_test.go
-├── main.go
 ├── messages.txt
 ├── go.mod
 └── go.sum
 ```
+
+For a deeper architecture and gap analysis, see [REPO_AUDIT.md](./REPO_AUDIT.md).
 
 ---
 
@@ -42,8 +47,8 @@ This project explores how HTTP is built by working directly with TCP sockets, ha
 Most developers interact with HTTP through frameworks or standard libraries. This project takes a lower-level approach to help you understand:
 
 - how data is transmitted over TCP
-- how streaming input is processed
-- how HTTP request lines are structured
+- how streaming input is processed incrementally
+- how HTTP request lines, headers, and bodies are structured
 - how protocol validation works internally
 
 This serves as a foundation for building an HTTP server from scratch.
@@ -52,14 +57,23 @@ This serves as a foundation for building an HTTP server from scratch.
 
 ## Components
 
-### TCP Listener
-Accepts connections and reads incoming data line-by-line to simulate how raw HTTP requests arrive over a socket.
+### TCP Listener (`cmd/tcplistener`)
 
-### UDP Sender
-A simple CLI tool to send messages over UDP for testing and experimentation.
+Accepts connections on `:42069`, feeds the raw `net.Conn` into the request parser, and prints the parsed request line, headers, and body. Useful for observing how a full HTTP/1.1 request arrives over a socket.
 
-### HTTP Request Parser
-Parses and validates HTTP/1.1 request lines, including method, path, and version.
+### UDP Sender (`cmd/udpsender`)
+
+A simple CLI tool to send lines over UDP for experimentation. It shares the same port number as the TCP listener but is not part of the HTTP parsing path.
+
+### HTTP Request Parser (`internal/request` + `internal/headers`)
+
+Incremental HTTP/1.1 request parser driven by a small state machine:
+
+1. Request line — method, request-target, `HTTP/1.1` only  
+2. Headers — `\r\n`-delimited lines until blank line  
+3. Body — `Content-Length` when present; otherwise empty body  
+
+`RequestFromReader(io.Reader)` handles buffering and partial reads so parsing works when data arrives in arbitrary chunk sizes.
 
 ---
 
@@ -68,6 +82,18 @@ Parses and validates HTTP/1.1 request lines, including method, path, and version
 ```http
 GET / HTTP/1.1
 Host: localhost:42069
+User-Agent: curl/7.81.0
+
+```
+
+With a body (POST):
+
+```http
+POST /submit HTTP/1.1
+Host: localhost:42069
+Content-Length: 13
+
+hello world!
 ```
 
 ---
@@ -97,6 +123,12 @@ go test ./...
 go run ./cmd/tcplistener
 ```
 
+In another terminal, send a request (example with curl):
+
+```bash
+curl -v http://localhost:42069/
+```
+
 ### Run UDP sender
 
 ```bash
@@ -109,27 +141,35 @@ go run ./cmd/udpsender
 
 - Go networking fundamentals
 - TCP socket handling
-- Stream processing
-- HTTP request parsing
-- Protocol validation
+- Stream processing and incremental parsing
+- HTTP/1.1 request structure (line, headers, body)
+- Protocol validation and test-driven edge cases
 
 ---
 
 ## Limitations
 
-- Not a full HTTP server yet
-- No header or body parsing beyond request line
-- No routing or response handling
+This is **not** a production HTTP server yet.
+
+- No HTTP responses (status line, headers, or body back to the client)
+- No routing or handlers
+- Body parsing via `Content-Length` only (no chunked transfer encoding)
+- No read/write timeouts, connection limits, or graceful shutdown
+- TCP listener does not close connections after handling (demo only)
+- Requires `\r\n` line endings (not bare `\n`)
 
 ---
 
-## Future improvements
+## Roadmap
 
-- Header parsing
-- Request body support
-- HTTP response generation
-- Routing system
-- Full HTTP server implementation
+- [ ] HTTP response writer and minimal handlers (e.g. `GET /health`)
+- [ ] Method + path router
+- [ ] Per-connection timeouts and request size limits
+- [ ] Graceful shutdown and proper connection lifecycle
+- [ ] Integration tests against a live TCP listener
+- [ ] Benchmarks and CI (`-race`)
+
+See [REPO_AUDIT.md](./REPO_AUDIT.md) for milestone detail.
 
 ---
 
